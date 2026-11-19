@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.1
+
+- Left and right click can no longer be captured as a binding. A stray click
+  while the map was waiting for a combo could put an action on BUTTON1 and
+  take over clicking entirely.
+- Anything already stuck on left or right click is now visible on the map and
+  can be cleared: the button shows what is on it and opens like any other key.
+- Assigning to left or right click is refused on every route in, including
+  dragging an action bar button onto them.
+
 ## 1.0.0
 
 First public release.

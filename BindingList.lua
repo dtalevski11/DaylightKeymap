@@ -474,12 +474,14 @@ local function Build()
     end
 
     capture:SetScript("OnKeyDown", function(_, keyName) Capture(keyName) end)
+    -- Left and right click are how you work the window, so they never
+    -- become a binding. Catching them here was how a stray click could
+    -- land an action on BUTTON1 and hijack clicking entirely.
     capture:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" or button == "RightButton" then return end
         local n = button:match("^Button(%d+)$")
-        if button == "LeftButton" then n = 1
-        elseif button == "RightButton" then n = 2
-        elseif button == "MiddleButton" then n = 3 end
-        if n then Capture("BUTTON" .. n) end
+        if button == "MiddleButton" then n = 3 end
+        if n and tonumber(n) > 2 then Capture("BUTTON" .. n) end
     end)
     capture:SetScript("OnMouseWheel", function(_, delta)
         Capture(delta > 0 and "MOUSEWHEELUP" or "MOUSEWHEELDOWN")

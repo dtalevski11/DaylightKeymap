@@ -412,9 +412,22 @@ local dirty = false
 
 -- Bind a whole binding string ("SHIFT-Z"). Returns true, plus whatever
 -- command lost that key, so the caller can say what it took away.
+-- Keys nothing may be bound to, whatever route the request came in by:
+-- a drag, the search list, a capture, anything.
+local NOT_BINDABLE = { BUTTON1 = true, BUTTON2 = true }
+
+function ns.IsBindableKey(key)
+    return not NOT_BINDABLE[key]
+end
+
 function ns.AssignBinding(binding, command)
     local ok, why = ns.CanEdit()
     if not ok then return false, why end
+
+    local key = ns.Split(binding)
+    if NOT_BINDABLE[key] then
+        return false, "Left and right click belong to looking, moving and clicking. They are not somewhere a binding can live."
+    end
 
     local previous = GetBindingAction(binding)
     if not SetBinding(binding, command) then

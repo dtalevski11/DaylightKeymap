@@ -339,19 +339,36 @@ local function LayoutMouse(host)
         hit.mouseLabel = entry.label
         hit.keyName = entry.key     -- so the repaint loop still reaches it
 
+        -- Locked buttons are still clickable, so anything that ended up on
+        -- one can be seen and cleared. Assigning to them is refused further
+        -- down, in ns.AssignBinding.
+        WireKey(hit, entry.key)
+
         if entry.locked then
-            -- drawn, named and explained, but not a slot you can fill
             hit.locked = true
             hit:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:AddLine(self.mouseLabel, 1, 1, 1)
-                GameTooltip:AddLine("Not bindable. WoW keeps the left and right buttons for looking, moving and clicking, and will not take them as keys even with a modifier held.", 0.6, 0.66, 0.75, true)
-                GameTooltip:AddLine("Mouse 3 and up bind normally.", 0.42, 0.46, 0.52, true)
+                GameTooltip:AddLine("Not bindable. These belong to looking, moving and clicking.", 0.6, 0.66, 0.75, true)
+
+                local stray = ns.CountFor(self.keyName)
+                if stray > 0 then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Something is on it anyway:", 0.94, 0.54, 0.54)
+                    local slots = ns.map[self.keyName]
+                    for _, layer in ipairs(ns.Layers()) do
+                        local slot = slots and slots[layer]
+                        if slot then
+                            GameTooltip:AddDoubleLine(ns.LayerLabel(layer), slot.name,
+                                0.6, 0.66, 0.75, 1, 1, 1)
+                        end
+                    end
+                    GameTooltip:AddLine("Click to open it and clear it.", 0.42, 0.46, 0.52, true)
+                else
+                    GameTooltip:AddLine("Mouse 3 and up bind normally.", 0.42, 0.46, 0.52, true)
+                end
                 GameTooltip:Show()
             end)
-            hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
-        else
-            WireKey(hit, entry.key)
         end
 
         mouseBits[#mouseBits + 1] = hit
@@ -1300,12 +1317,14 @@ local function Build()
     end
 
     capture:SetScript("OnKeyDown", function(_, keyName) Capture(keyName) end)
+    -- Left and right click are how you work the window, so they never
+    -- become a binding. Catching them here was how a stray click could
+    -- land an action on BUTTON1 and hijack clicking entirely.
     capture:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" or button == "RightButton" then return end
         local n = button:match("^Button(%d+)$")
-        if button == "LeftButton" then n = 1
-        elseif button == "RightButton" then n = 2
-        elseif button == "MiddleButton" then n = 3 end
-        if n then Capture("BUTTON" .. n) end
+        if button == "MiddleButton" then n = 3 end
+        if n and tonumber(n) > 2 then Capture("BUTTON" .. n) end
     end)
     capture:SetScript("OnMouseWheel", function(_, delta)
         Capture(delta > 0 and "MOUSEWHEELUP" or "MOUSEWHEELDOWN")
