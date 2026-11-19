@@ -1,0 +1,11 @@
+package-as: DaylightKeymap
+
+enable-nolib-creation: no
+
+ignore:
+  - README.md
+  - CHANGELOG.md
+  - LICENSE
+  - .gitignore
+  - .github
+  - screenshots
