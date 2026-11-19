@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.1
+## 1.0.2
 
 - Left and right click can no longer be captured as a binding. A stray click
   while the map was waiting for a combo could put an action on BUTTON1 and
