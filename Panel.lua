@@ -166,6 +166,25 @@ local function KeyTooltip(self)
     GameTooltip:Show()
 end
 
+-- Why a greyed key is greyed. Dead to the click, but it can still say why.
+local MOD_WHY = {
+    Ctrl  = "A modifier. It changes what another key does rather than doing anything on its own.",
+    Shift = "A modifier. It changes what another key does rather than doing anything on its own.",
+    Alt   = "A modifier. It changes what another key does rather than doing anything on its own.",
+    Win   = "Windows takes this before the game ever sees it.",
+    Fn    = "The keyboard handles this itself. It never reaches the computer, let alone the game.",
+    Menu  = "WoW has no name for this key, so there is nothing to bind to.",
+}
+
+local function ModTooltip(self)
+    local why = MOD_WHY[self.label and self.label:GetText()]
+    if not why then return end
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(self.label:GetText(), 1, 1, 1)
+    GameTooltip:AddLine(why, 0.6, 0.66, 0.75, true)
+    GameTooltip:Show()
+end
+
 local function OnKeyClick(self)
     -- clicking the key that is already picked puts it back down
     if selected == self.keyName then
@@ -228,7 +247,8 @@ local function LayoutBoard(host)
 
         if p.mod then
             tile:PaintModifier()
-            tile:EnableMouse(false)
+            tile:SetScript("OnEnter", ModTooltip)
+            tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
         else
             WireKey(tile, p.key)
         end
@@ -339,36 +359,34 @@ local function LayoutMouse(host)
         hit.mouseLabel = entry.label
         hit.keyName = entry.key     -- so the repaint loop still reaches it
 
-        -- Locked buttons are still clickable, so anything that ended up on
-        -- one can be seen and cleared. Assigning to them is refused further
-        -- down, in ns.AssignBinding.
-        WireKey(hit, entry.key)
-
         if entry.locked then
+            -- Dead to the touch, like the modifier keys. Nothing can be put
+            -- here, so offering a click would only suggest otherwise. The
+            -- tooltip explains, and /dui keymapfix is the way back if one
+            -- has been knocked off the game's own action.
             hit.locked = true
+            hit.keyName = entry.key
             hit:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:AddLine(self.mouseLabel, 1, 1, 1)
-                GameTooltip:AddLine("Not bindable. These belong to looking, moving and clicking.", 0.6, 0.66, 0.75, true)
+                GameTooltip:AddLine("Reserved. The game uses this for looking, moving and selecting, so nothing else can take it.", 0.6, 0.66, 0.75, true)
 
-                local stray = ns.CountFor(self.keyName)
-                if stray > 0 then
+                local default = ns.ReservedDefault(self.keyName)
+                local now = GetBindingAction(self.keyName)
+
+                if default and now ~= default then
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Something is on it anyway:", 0.94, 0.54, 0.54)
-                    local slots = ns.map[self.keyName]
-                    for _, layer in ipairs(ns.Layers()) do
-                        local slot = slots and slots[layer]
-                        if slot then
-                            GameTooltip:AddDoubleLine(ns.LayerLabel(layer), slot.name,
-                                0.6, 0.66, 0.75, 1, 1, 1)
-                        end
-                    end
-                    GameTooltip:AddLine("Click to open it and clear it.", 0.42, 0.46, 0.52, true)
+                    GameTooltip:AddLine("This is not doing its usual job:", 0.94, 0.54, 0.54)
+                    GameTooltip:AddLine(now ~= "" and ns.CommandName(now) or "nothing at all", 1, 1, 1)
+                    GameTooltip:AddLine("Type /dui keymapfix to put the game's own action back.", 0.42, 0.46, 0.52, true)
                 else
                     GameTooltip:AddLine("Mouse 3 and up bind normally.", 0.42, 0.46, 0.52, true)
                 end
                 GameTooltip:Show()
             end)
+            hit:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        else
+            WireKey(hit, entry.key)
         end
 
         mouseBits[#mouseBits + 1] = hit

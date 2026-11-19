@@ -412,9 +412,40 @@ local dirty = false
 
 -- Bind a whole binding string ("SHIFT-Z"). Returns true, plus whatever
 -- command lost that key, so the caller can say what it took away.
--- Keys nothing may be bound to, whatever route the request came in by:
--- a drag, the search list, a capture, anything.
+-- Left and right click are not empty keys: the game binds them to looking,
+-- moving and selecting. Nothing else may take them, and clearing one puts
+-- the game's own action back rather than leaving the button dead.
 local NOT_BINDABLE = { BUTTON1 = true, BUTTON2 = true }
+
+local RESERVED_DEFAULT = {
+    BUTTON1 = "CAMERAORSELECTORMOVE",
+    BUTTON2 = "TURNORACTION",
+}
+
+function ns.ReservedDefault(key)
+    return RESERVED_DEFAULT[key]
+end
+
+-- Put left and right click back to what the game does with them. Safe to
+-- call at any time; it only touches those two.
+function ns.RestoreMouseDefaults()
+    local ok, why = ns.CanEdit()
+    if not ok then return false, why end
+
+    local fixed = 0
+    for key, command in pairs(RESERVED_DEFAULT) do
+        if GetBindingAction(key) ~= command then
+            SetBinding(key, command)
+            fixed = fixed + 1
+        end
+    end
+
+    if fixed > 0 then
+        SaveBindings(ns.TargetSet())
+        ns.Scan()
+    end
+    return true, fixed
+end
 
 function ns.IsBindableKey(key)
     return not NOT_BINDABLE[key]
@@ -442,6 +473,19 @@ end
 function ns.ClearBinding(binding)
     local ok, why = ns.CanEdit()
     if not ok then return false, why end
+
+    -- Clearing the bare left or right button would leave it doing nothing
+    -- at all, which is worse than whatever was on it. Put the game's own
+    -- action back instead.
+    local restore = RESERVED_DEFAULT[binding]
+    if restore then
+        if GetBindingAction(binding) == restore then return true end
+        SetBinding(binding, restore)
+        dirty = true
+        ns.Scan()
+        return true, restore
+    end
+
     if GetBindingAction(binding) == "" then return true end
 
     SetBinding(binding, nil)

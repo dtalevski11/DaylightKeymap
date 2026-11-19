@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.0.3
+
+- Left and right click can no longer be captured as a binding. A stray click
+  while the map was waiting for a combo could put an action on BUTTON1 and
+  take over clicking entirely.
+- Those two buttons are inert on the map now, greyed and unresponsive like the
+  modifier keys. They are reserved by the game for looking, moving and
+  selecting, so nothing else can take them.
+- Clearing one puts the game's own action back rather than leaving it doing
+  nothing at all.
+- New `/dui keymapfix` restores both to the game's defaults, for anyone whose
+  mouse was already left in that state.
+- Every greyed key says why it is greyed on hover, modifiers included.
+
 ## 1.0.2
 
 - Left and right click can no longer be captured as a binding. A stray click

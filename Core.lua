@@ -129,6 +129,18 @@ my.RegisterCommand("keymap", function()
     ns.TogglePanel()
 end, "Open the keymap")
 
+-- A way back if left or right click ever stops looking, moving or selecting.
+my.RegisterCommand("keymapfix", function()
+    local ok, result = ns.RestoreMouseDefaults()
+    if not ok then
+        print(ns.TAG .. result)
+    elseif result == 0 then
+        print(ns.TAG .. "Left and right click are already doing the game's own job.")
+    else
+        print(ns.TAG .. "Put " .. result .. " mouse button(s) back to the game's default.")
+    end
+end, "Put left and right click back to the game's defaults")
+
 -- If categories ever come out wrong, this prints what the game actually
 -- hands back so the mapping can be fixed against real data.
 my.RegisterCommand("keymapraw", function()
