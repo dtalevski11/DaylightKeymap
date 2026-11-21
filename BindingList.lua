@@ -121,14 +121,15 @@ local function MakeRow(parent, index)
     row.tag2 = MakeTag(row)
 
     row.clear = CreateFrame("Button", nil, row)
-    row.clear:SetSize(22, 22)
+    row.clear:SetSize(58, 20)
     row.clear:SetPoint("RIGHT", -6, 0)
     row.clear:SetFrameLevel(row:GetFrameLevel() + 2)
     row.clear.bg = row.clear:CreateTexture(nil, "BACKGROUND")
     row.clear.bg:SetAllPoints()
     row.clear.bg:SetColorTexture(0, 0, 0, 0)
-    row.clear.mark = API.Text(row.clear, "small")
+    row.clear.mark = API.Text(row.clear, "tiny")
     row.clear.mark:SetPoint("CENTER")
+    row.clear.mark:SetText("Clear all")
     row.clear:Hide()
 
     row.clear:SetScript("OnClick", function(self)
@@ -142,13 +143,11 @@ local function MakeRow(parent, index)
     end)
     row.clear:SetScript("OnEnter", function(self)
         self.bg:SetColorTexture(0.45, 0.13, 0.13, 1)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine("Clear every key on this action", 0.94, 0.54, 0.54)
-        GameTooltip:Show()
+        self.mark:SetTextColor(1, 0.88, 0.88)
     end)
     row.clear:SetScript("OnLeave", function(self)
-        self.bg:SetColorTexture(0, 0, 0, 0)
-        GameTooltip:Hide()
+        self.bg:SetColorTexture(0.26, 0.10, 0.10, 1)
+        self.mark:SetTextColor(0.80, 0.52, 0.52)
     end)
 
     row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
@@ -181,7 +180,6 @@ local function MakeRow(parent, index)
             return
         end
         self.bg:SetColorTexture(0.110, 0.129, 0.165, 1)
-        self.clear:SetShown(item.entry and ns.KeysForCommand(item.entry.command) ~= nil)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:AddLine(item.entry.name, 1, 1, 1)
         GameTooltip:AddLine("Click, then press the combo you want.", 0.6, 0.66, 0.75)
@@ -190,8 +188,11 @@ local function MakeRow(parent, index)
     end)
     row:SetScript("OnLeave", function(self)
         GameTooltip:Hide()
-        self.clear:Hide()
-        ns.RefreshBindings()
+        if self.item and self.item.kind == "header" then
+            self.bg:SetColorTexture(0.102, 0.118, 0.153, 1)
+        elseif self.item then
+            self.bg:SetColorTexture(0.071, 0.082, 0.106, 1)
+        end
     end)
 
     return row
@@ -255,6 +256,10 @@ function ns.RefreshBindings()
                 row.name:SetText(entry.name)
                 row.name:SetTextColor(0.847, 0.867, 0.902)
 
+                row.clear:SetShown(not busy and ns.KeysForCommand(entry.command) ~= nil)
+                row.clear.bg:SetColorTexture(0.26, 0.10, 0.10, 1)
+                row.clear.mark:SetTextColor(0.80, 0.52, 0.52)
+
                 if busy then
                     row.note:SetText("press a combo, esc to cancel")
                     row.note:SetTextColor(API.Accent())
@@ -265,7 +270,7 @@ function ns.RefreshBindings()
                     row.tag2:Set(b)
                     if row.tag1:IsShown() then
                         row.tag1:ClearAllPoints()
-                        row.tag1:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+                        row.tag1:SetPoint("RIGHT", row.clear, "LEFT", -8, 0)
                     end
                     if row.tag2:IsShown() then
                         row.tag2:ClearAllPoints()

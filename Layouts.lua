@@ -192,9 +192,11 @@ function ns.BuildMouse()
         { key = "BUTTON3", label = "MMB", part = "wheel" },
     }
 
+    -- Short labels, because a thumb pad's worth of these has to fit beside
+    -- the mouse without pushing everything below it out of the way.
     local left = {}
     for i = 4, count do
-        left[#left + 1] = { key = "BUTTON" .. i, label = "Mouse " .. i }
+        left[#left + 1] = { key = "BUTTON" .. i, label = "M" .. i }
     end
 
     local right = {

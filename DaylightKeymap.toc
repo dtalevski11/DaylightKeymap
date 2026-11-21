@@ -1,7 +1,7 @@
 ## Interface: 16001
 ## Title: Keymap (DaylightUI Plugin)
-## Author: Dushko
-## Version: 1.0.3
+## Author: KillaBunny
+## Version: 1.0.4
 ## Notes: A visual keyboard and mouse map of every keybind, with live rebinding.
 ## IconTexture: Interface\AddOns\DaylightKeymap\icon
 ## Dependencies: DaylightUI

@@ -301,21 +301,31 @@ local function LayoutMouse(host)
 
     local core, left, right = ns.BuildMouse()
 
-    -- thumb buttons, stacked on the left
-    local thumbW = 88
+    -- Thumb buttons as squares in two columns: M4 M5 / M6 M7 / ... so a
+    -- twelve-button mouse stays beside the drawing instead of running down
+    -- the panel and over the legend.
+    local SQ, SQ_GAP = 38, 4
+    local SQ_PITCH = SQ + SQ_GAP
+    local thumbW = (#left > 0) and (SQ_PITCH * 2 - SQ_GAP) or 0
+    local thumbRows = math.ceil(#left / 2)
+
     for i, entry in ipairs(left) do
+        local col = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
         local tile = MakeTile(host)
-        tile:SetSize(thumbW, 26)
-        tile:SetPoint("TOPLEFT", host, "TOPLEFT", 0, -(i - 1) * 30)
+        tile:SetSize(SQ, SQ)
+        tile:SetPoint("TOPLEFT", host, "TOPLEFT", col * SQ_PITCH, -row * SQ_PITCH)
         tile.label:SetText(entry.label)
         WireKey(tile, entry.key)
         mouseBits[#mouseBits + 1] = tile
     end
 
+    local gutter = (thumbW > 0) and (thumbW + 16) or 0
+
     -- the mouse itself
     local body = CreateFrame("Frame", nil, host)
     body:SetSize(MOUSE_W, MOUSE_H)
-    body:SetPoint("TOPLEFT", host, "TOPLEFT", thumbW + 16, 0)
+    body:SetPoint("TOPLEFT", host, "TOPLEFT", gutter, 0)
     mouseBits[#mouseBits + 1] = body
 
     local shell = body:CreateTexture(nil, "BACKGROUND")
@@ -396,13 +406,14 @@ local function LayoutMouse(host)
     for i, entry in ipairs(right) do
         local tile = MakeTile(host)
         tile:SetSize(88, 26)
-        tile:SetPoint("TOPLEFT", host, "TOPLEFT", thumbW + 16 + MOUSE_W + 16, -(i - 1) * 30)
+        tile:SetPoint("TOPLEFT", host, "TOPLEFT", gutter + MOUSE_W + 16, -(i - 1) * 30)
         tile.label:SetText(entry.label)
         WireKey(tile, entry.key)
         mouseBits[#mouseBits + 1] = tile
     end
 
-    host:SetSize(thumbW + 16 + MOUSE_W + 16 + 88, MOUSE_H)
+    host:SetSize(gutter + MOUSE_W + 16 + 88,
+        math.max(MOUSE_H, thumbRows * SQ_PITCH - SQ_GAP))
 end
 
 ----------------------------------------------------------------------
@@ -546,9 +557,11 @@ local function RefreshSlots()
     panel.slotHost:SetHeight(#layers * 31)
 
     local used = ns.CountFor(key)
-    panel.selKey:SetText(ns.ShortKeyName(key))
+    local short = ns.ShortKeyName(key)
+    panel.selKey:SetText(short)
     panel.selKey:SetTextColor(unpack(TEXT[Bucket(used)]))
-    panel.selTitle:SetText(key)
+    -- only worth repeating when the tile had to shorten it
+    panel.selTitle:SetText(short ~= key and key or "")
     panel.selSub:SetText(used .. " of " .. #layers .. " layers used, "
         .. (#layers - used) .. " free")
 
@@ -609,18 +622,39 @@ end
 -- Command search
 ----------------------------------------------------------------------
 local resultRows, resultOffset = {}, 0
+local browseMode, browseOpen = false, {}
 local resultCount, resultTotal = 8, 0   -- rows that fit, matches found
 local ROW_H = 28
 
+-- What the list below the search box is showing: matches while you type,
+-- or every action under its own heading once you press See all.
 local function Matches()
     local out = {}
-    if searchText == "" then return out end
-    local needle = searchText:lower()
-    for _, entry in ipairs(ns.commands or {}) do
-        if entry.name:lower():find(needle, 1, true)
-            or entry.category:lower():find(needle, 1, true) then
-            out[#out + 1] = entry
-            if #out >= 200 then break end
+
+    if searchText ~= "" then
+        local needle = searchText:lower()
+        for _, entry in ipairs(ns.commands or {}) do
+            if entry.name:lower():find(needle, 1, true)
+                or entry.category:lower():find(needle, 1, true) then
+                out[#out + 1] = { kind = "action", entry = entry }
+                if #out >= 200 then break end
+            end
+        end
+        return out
+    end
+
+    if not browseMode then return out end
+
+    for _, group in ipairs(ns.CommandGroups()) do
+        local open = browseOpen[group.name]
+        out[#out + 1] = {
+            kind = "header", name = group.name,
+            count = #group.items, open = open,
+        }
+        if open then
+            for _, entry in ipairs(group.items) do
+                out[#out + 1] = { kind = "action", entry = entry }
+            end
         end
     end
     return out
@@ -656,8 +690,11 @@ local function RefreshResults()
     panel.results:SetShown(resultTotal > 0)
     if panel.resultsHead then
         panel.resultsHead:SetShown(resultTotal > 0)
-        panel.resultsHead:SetText(resultTotal > 0
-            and ("MATCHING ACTIONS (" .. resultTotal .. ")") or "MATCHING ACTIONS")
+        if searchText ~= "" then
+            panel.resultsHead:SetText("MATCHING ACTIONS (" .. resultTotal .. ")")
+        else
+            panel.resultsHead:SetText("ALL ACTIONS BY CATEGORY")
+        end
     end
 
     for i = 1, resultCount do
@@ -687,6 +724,11 @@ local function RefreshResults()
             row:SetPoint("TOPLEFT", panel.results, "TOPLEFT", 0, -(i - 1) * ROW_H)
             row:SetPoint("TOPRIGHT", panel.results, "TOPRIGHT", -12, -(i - 1) * ROW_H)
             row:SetScript("OnClick", function(self)
+                if self.headerName then
+                    browseOpen[self.headerName] = not browseOpen[self.headerName]
+                    RefreshResults()
+                    return
+                end
                 if not self.command then return end
 
                 local key, layer
@@ -723,8 +765,25 @@ local function RefreshResults()
             resultRows[i] = row
         end
 
-        local entry = list[i + resultOffset]
-        if entry then
+        local item = list[i + resultOffset]
+
+        if item and item.kind == "header" then
+            row.headerName, row.command, row.label = item.name, nil, nil
+            row.bg:SetColorTexture(0.133, 0.153, 0.196, 1)
+            row.tag:Hide()
+            row.name:ClearAllPoints()
+            row.name:SetPoint("LEFT", row, "LEFT", 8, 0)
+            row.name:SetPoint("RIGHT", row.cat, "LEFT", -8, 0)
+            row.name:SetText((item.open and "- " or "+ ") .. item.name)
+            row.name:SetTextColor(0.90, 0.92, 0.95)
+            row.cat:SetText(tostring(item.count))
+            row.cat:SetTextColor(0.42, 0.46, 0.52)
+            row:Show()
+
+        elseif item then
+            local entry = item.entry
+            row.headerName = nil
+            row.bg:SetColorTexture(0.086, 0.102, 0.129, 1)
             row.command, row.label = entry.command, entry.name
             row.name:SetText(entry.name)
             row.name:SetTextColor(0.847, 0.867, 0.902)
@@ -753,7 +812,7 @@ local function RefreshResults()
             -- The name stops where the tag or the source starts, so a long
             -- action is cut short instead of running underneath them.
             row.name:ClearAllPoints()
-            row.name:SetPoint("LEFT", row, "LEFT", 8, 0)
+            row.name:SetPoint("LEFT", row, "LEFT", (searchText == "" and browseMode) and 22 or 8, 0)
             if row.tag:IsShown() then
                 row.name:SetPoint("RIGHT", row.tag, "LEFT", -8, 0)
             elseif fromAddon then
@@ -1064,9 +1123,31 @@ local function Build()
             RefreshResults()
         end,
     })
-    search:SetSize(RESULT_W, 26)
+    search:SetSize(RESULT_W - 96, 26)
     search:SetPoint("TOPLEFT", searchCap, "BOTTOMLEFT", 0, -8)
     panel.search = search
+
+    -- Browse everything by category without typing, the same headings the
+    -- keybindings window uses.
+    local seeAll = API.Button(mapping, "See all", 26)
+    seeAll:SetWidth(88)
+    seeAll:SetPoint("LEFT", search, "RIGHT", 8, 0)
+    seeAll:SetAlpha(0.5)
+    seeAll:SetScript("OnClick", function(self)
+        browseMode = not browseMode
+        resultOffset = 0
+        if not browseMode then wipe(browseOpen) end
+        self:SetAlpha(browseMode and 1 or 0.5)
+        RefreshResults()
+    end)
+    seeAll:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine("See all", 1, 1, 1)
+        GameTooltip:AddLine("Every action under its own heading. Click a heading to open it, then an action to put it on the slot you picked.", 0.6, 0.66, 0.75, true)
+        GameTooltip:Show()
+    end)
+    seeAll:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    panel.seeAll = seeAll
 
     panel.resultsHead = API.Text(mapping, "tiny", "LEFT")
     panel.resultsHead:SetPoint("TOPLEFT", mapping, "TOPLEFT", SLOT_W + 30, -90)
@@ -1195,19 +1276,20 @@ local function Build()
         v.hit = hit
         return v
     end
-    panel.statBound = Stat(0, -170, "BINDINGS",
-        "How many bindings sit on the keys drawn above, counting only the layers the map is showing.")
+    -- The top row is about this keyboard: every key-and-modifier slot on it
+    -- is either used or free, and the two always add up. The line below is
+    -- about the game instead, which is why its numbers never match.
+    panel.statBound = Stat(0, -170, "USED SLOTS",
+        "Key-and-modifier slots filled on the board above. This and Free slots always add up to every slot this keyboard has.")
 
-    panel.statKeys = Stat(110, -170, "FREE KEYS",
-        "Keys with nothing on any shown layer. Mouse buttons, the nav cluster and the arrows all count as keys.")
+    panel.statSlots = Stat(110, -170, "FREE SLOTS",
+        "Slots still empty: the free keys, plus the spare layers on keys already in use.")
 
-    panel.statSlots = Stat(220, -170, "FREE SLOTS",
-        "Every empty key-and-modifier combination: free keys plus the spare layers on keys already in use.")
+    panel.statKeys = Stat(220, -170, "FREE KEYS",
+        "Keys with nothing on any of their slots. Mouse buttons, the nav cluster and the arrows all count as keys.")
 
-    -- Keys say how much room is left; this says how much of the game you
-    -- have actually bound.
-    panel.statActions = Stat(0, -226, "ACTIONS WITH A KEY",
-        "Bindable actions that have at least one key, out of every action the game and your addons offer. An action on two keys still counts once.")
+    panel.statActions = Stat(0, -226, "ACTIONS BOUND",
+        "Something different: actions, not slots. How many of everything the game and your addons offer have at least one key. An action on two keys counts once, and a key off this board still counts, so this will not match Slots used.")
     panel.statActions:SetTextColor(unpack(TEXT[4]))
     panel.statActions.hit:SetSize(140, 44)
 

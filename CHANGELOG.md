@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.4
+
+- New See all button beside the search box: browse every action under its own
+  heading, open a heading, pick an action, without typing anything.
+- Counters renamed and explained. Slots used and Free slots are two halves of
+  the same board and always add up; Actions bound counts something else
+  entirely, which is why it never matches.
+- Clear all is a real button on each row of the keybindings list now. It used
+  to appear only on hover and vanish as you reached for it.
+- Thumb buttons are squares in two columns, labelled M4 upward, so a
+  twelve-button mouse no longer runs over the legend.
+- The selected key is no longer printed twice when its name is already short.
+- Author credit now reads KillaBunny.
+- The website link on the Plugins page points at the repository instead of a
+  placeholder.
+
 ## 1.0.3
 
 - Left and right click can no longer be captured as a binding. A stray click
