@@ -1,7 +1,25 @@
 # Changelog
 
+## 1.1.0
+
+- The separate Keybindings window is gone. Everything it did now lives in the
+  Keymap, in one window.
+- **Bind on hover**: point at a button on an action bar, press a combo, done.
+  It tells you what the key was doing before it took it.
+- Click an action first, then press the key you want it on.
+- The actions filter cycles: All actions, On two keys, Not bound. The second
+  one answers "which of these is bound twice?" in a click.
+- **Export** and **Import**: copy every binding out as plain text, paste a set
+  back in. Nothing saves until you press Save map, so Discard undoes an import.
+- One Expand all button that collapses on a second press, instead of two.
+- Clear all, on the map.
+- Middle mouse button is legible, and labelled on the button rather than under
+  the mouse.
+
 ## 1.0.4
 
+- Hovering an action in the list names every key it is on, rather than the
+  tag's "M5 +1" shorthand.
 - New See all button beside the search box: browse every action under its own
   heading, open a heading, pick an action, without typing anything.
 - Counters renamed and explained. Slots used and Free slots are two halves of

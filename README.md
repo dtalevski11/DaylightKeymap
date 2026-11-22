@@ -26,23 +26,41 @@ WoW is the game of a thousand keybinds, and you usually find out a key is taken 
 - Right-click a slot to move its binding to another key; the **x** clears it
 - Search every bindable action, each one showing the key it is already on
 - Drag a button off a Daylight UI action bar straight onto a key
+- Clear every binding at once with **Clear all**
 
-## The keybindings list
+## The actions list
 
-A second window with every bindable action under the game's own headings — Movement Keys, Action Bar, Targeting, Camera and the rest, in Blizzard's order, with your addons' categories after them.
+Every bindable action under the game's own headings — Movement Keys, Action
+Bar, Targeting, Camera and the rest, in Blizzard's order, with your addons'
+categories after them. It sits in the same window as the map.
 
-- Headings open and close, with expand and collapse all
-- Search across every action
+- Search across every action, each one showing the key it is already on
+- One button cycles what the list shows: **All actions**, **On two keys**,
+  **Not bound**
+- Expand or collapse every heading with one button
 - Click an action, press the combo, done
+
+## Bind on hover
+
+Press **Bind on hover**, point at any button on a Daylight UI action bar, and
+press the combo you want. It says what the key was doing before it took it.
+Escape stops.
+
+## Export and import
+
+**Export** gives you every binding as plain text — select, copy, keep it in a
+file. **Import** takes it back. Nothing is written until you press Save map,
+so Discard changes undoes an import you did not want.
 
 ## Counters
 
 | Counter | What it means |
 |---|---|
-| Bindings | How many sit on the keys drawn |
-| Free keys | Keys with nothing on any layer |
-| Free slots | Every empty key-and-modifier combination |
-| Actions with a key | How much of the game you have bound, out of everything available |
+| Used slots | Key-and-modifier combinations with something on them |
+| Free slots | Key-and-modifier combinations still empty |
+| Free keys | Keys with nothing on any layer at all |
+| Actions bound | How much of the game you have bound, out of everything available |
+| On two keys | Actions reachable from two keys, WoW's limit |
 
 Hover any of them for an explanation. The free-keys counter names the keys it found.
 
@@ -55,7 +73,10 @@ Open **Daylight UI options → Plugins → Keymap**, or type:
 | Command | Does |
 |---|---|
 | `/dui keymap` | Opens the map |
-| `/dui keybinds` | Opens the keybindings list |
+| `/dui bindhover` | Starts bind on hover |
+| `/dui keymapexport` | Copy your bindings out as text |
+| `/dui keymapimport` | Paste bindings back in |
+| `/dui keymapfix` | Restores left and right click to the game's defaults |
 | `/dui keymapraw` | Prints the raw binding data, for bug reports |
 
 ## Installing by hand

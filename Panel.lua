@@ -345,7 +345,14 @@ local function LayoutMouse(host)
         hit.tex = tex
 
         hit.count = API.Text(hit, "tiny")
-        hit.count:SetPoint("CENTER", 0, entry.part == "wheel" and 0 or -6)
+        if entry.part == "wheel" then
+            -- Centred over the wheel but raised to the top of the mouse:
+            -- the strip itself is 16px, far too narrow to hold a label, and
+            -- LMB and RMB sit lower so nothing collides.
+            hit.count:SetPoint("TOP", body, "TOP", 0, -5)
+        else
+            hit.count:SetPoint("CENTER", 0, -6)
+        end
 
         function hit:Paint(bucket)
             if self.locked then
@@ -362,7 +369,7 @@ local function LayoutMouse(host)
         function hit:ShowSel(on, r, g, b)
             if on then
                 self.tex:SetVertexColor(r, g, b)
-                self.count:SetTextColor(0.08, 0.09, 0.12)
+                self.count:SetTextColor(r, g, b)
             end
         end
 
@@ -622,7 +629,61 @@ end
 -- Command search
 ----------------------------------------------------------------------
 local resultRows, resultOffset = {}, 0
-local browseMode, browseOpen = false, {}
+local browseOpen = {}
+
+-- Daylight builds its buttons with their own label, so the frame's own
+-- SetText does not touch what you actually read. Find the label wherever it
+-- lives rather than guessing at one name.
+local function SetButtonLabel(btn, text)
+    if not btn then return end
+    for _, key in ipairs({ "text", "Text", "label", "Label", "title" }) do
+        local fs = btn[key]
+        if type(fs) == "table" and fs.SetText then fs:SetText(text); return end
+    end
+    if btn.GetFontString then
+        local fs = btn:GetFontString()
+        if fs then fs:SetText(text); return end
+    end
+    if btn.GetRegions then
+        for _, region in ipairs({ btn:GetRegions() }) do
+            if region.GetObjectType and region:GetObjectType() == "FontString" then
+                region:SetText(text); return
+            end
+        end
+    end
+    if btn.SetText then btn:SetText(text) end
+end
+
+-- True when every heading in the list is already open.
+local function AllGroupsOpen()
+    local groups = ns.CommandGroups()
+    if not groups or #groups == 0 then return false end
+    for _, group in ipairs(groups) do
+        if not browseOpen[group.name] then return false end
+    end
+    return true
+end
+
+-- The actions list is always there; this is what it is narrowed to.
+local FILTERS = {
+    { key = "all",    label = "All actions",
+      tip = "Every action, under the same headings the keybindings window uses. Click a heading to open it." },
+    { key = "double", label = "On two keys",
+      tip = "Only actions reachable from two different keys. Two is WoW's limit, so this is every action with more than one." },
+    { key = "none",   label = "Not bound",
+      tip = "Only actions with no key at all." },
+}
+local filterIndex = 1
+
+local function FilterKey() return FILTERS[filterIndex].key end
+
+local function PassesFilter(entry)
+    local mode = FilterKey()
+    if mode == "all" then return true end
+    local first, second = ns.KeysForCommand(entry.command)
+    if mode == "double" then return second ~= nil end
+    return first == nil
+end
 local resultCount, resultTotal = 8, 0   -- rows that fit, matches found
 local ROW_H = 28
 
@@ -634,8 +695,9 @@ local function Matches()
     if searchText ~= "" then
         local needle = searchText:lower()
         for _, entry in ipairs(ns.commands or {}) do
-            if entry.name:lower():find(needle, 1, true)
-                or entry.category:lower():find(needle, 1, true) then
+            if (entry.name:lower():find(needle, 1, true)
+                or entry.category:lower():find(needle, 1, true))
+                and PassesFilter(entry) then
                 out[#out + 1] = { kind = "action", entry = entry }
                 if #out >= 200 then break end
             end
@@ -643,17 +705,23 @@ local function Matches()
         return out
     end
 
-    if not browseMode then return out end
-
     for _, group in ipairs(ns.CommandGroups()) do
-        local open = browseOpen[group.name]
-        out[#out + 1] = {
-            kind = "header", name = group.name,
-            count = #group.items, open = open,
-        }
-        if open then
-            for _, entry in ipairs(group.items) do
-                out[#out + 1] = { kind = "action", entry = entry }
+        local kept = {}
+        for _, entry in ipairs(group.items) do
+            if PassesFilter(entry) then kept[#kept + 1] = entry end
+        end
+
+        if #kept > 0 then
+            -- a filter opens what it found, so matches are not buried
+            local open = browseOpen[group.name] or (FilterKey() ~= "all")
+            out[#out + 1] = {
+                kind = "header", name = group.name,
+                count = #kept, open = open,
+            }
+            if open then
+                for _, entry in ipairs(kept) do
+                    out[#out + 1] = { kind = "action", entry = entry }
+                end
             end
         end
     end
@@ -693,7 +761,21 @@ local function RefreshResults()
         if searchText ~= "" then
             panel.resultsHead:SetText("MATCHING ACTIONS (" .. resultTotal .. ")")
         else
-            panel.resultsHead:SetText("ALL ACTIONS BY CATEGORY")
+            panel.resultsHead:SetText(FILTERS[filterIndex].label:upper()
+                .. " (" .. resultTotal .. " lines)")
+        end
+    end
+
+    -- Headings only exist when you are browsing everything: a search is a
+    -- flat list, and the other two filters open what little they find. The
+    -- button has no job in either, so it steps out of the way.
+    if panel.expandAll then
+        local useful = (searchText == "" and FilterKey() == "all")
+        panel.expandAll:SetShown(useful and resultTotal > 0)
+        if useful then
+            local open = AllGroupsOpen()
+            SetButtonLabel(panel.expandAll, open and "Collapse all" or "Expand all")
+            panel.expandAll:SetAlpha(open and 1 or 0.7)
         end
     end
 
@@ -721,8 +803,68 @@ local function RefreshResults()
             row.tag.text = API.Text(row.tag, "tiny")
             row.tag.text:SetPoint("CENTER")
             row.tag:Hide()
+
+            -- Same gesture as the keybindings window: always there on an
+            -- action that has keys, no hunting for a hover target.
+            row.clear = CreateFrame("Button", nil, row)
+            row.clear:SetSize(56, 20)
+            row.clear:SetPoint("RIGHT", -6, 0)
+            row.clear:SetFrameLevel(row:GetFrameLevel() + 2)
+            row.clear.bg = row.clear:CreateTexture(nil, "BACKGROUND")
+            row.clear.bg:SetAllPoints()
+            row.clear.text = API.Text(row.clear, "tiny")
+            row.clear.text:SetPoint("CENTER")
+            row.clear.text:SetText("Clear all")
+            row.clear:Hide()
+
+            row.clear:SetScript("OnClick", function(self)
+                local parent = self:GetParent()
+                if not parent.command then return end
+                local a, b = ns.KeysForCommand(parent.command)
+                if a then ns.ClearBinding(a) end
+                if b then ns.ClearBinding(b) end
+                Say(parent.label .. ": cleared.")
+                ns.Refresh()
+            end)
+            row.clear:SetScript("OnEnter", function(self)
+                self.bg:SetColorTexture(0.45, 0.13, 0.13, 1)
+                self.text:SetTextColor(1, 0.88, 0.88)
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                GameTooltip:AddLine("Clear every key on this action", 0.94, 0.54, 0.54)
+                GameTooltip:Show()
+            end)
+            row.clear:SetScript("OnLeave", function(self)
+                self.bg:SetColorTexture(0.26, 0.10, 0.10, 1)
+                self.text:SetTextColor(0.80, 0.52, 0.52)
+                GameTooltip:Hide()
+            end)
             row:SetPoint("TOPLEFT", panel.results, "TOPLEFT", 0, -(i - 1) * ROW_H)
             row:SetPoint("TOPRIGHT", panel.results, "TOPRIGHT", -12, -(i - 1) * ROW_H)
+
+            -- The tag only has room for the first key and a count of the
+            -- rest. Hovering the row spells every one of them out.
+            row:SetScript("OnEnter", function(self)
+                if self.headerName or not self.command then return end
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                GameTooltip:AddLine(self.label, 1, 1, 1)
+
+                local a, b = ns.KeysForCommand(self.command)
+                if a then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("On:", 0.42, 0.46, 0.52)
+                    GameTooltip:AddLine(ns.PrettyBinding(a), unpack(TEXT[1]))
+                    if b then GameTooltip:AddLine(ns.PrettyBinding(b), unpack(TEXT[1])) end
+                else
+                    GameTooltip:AddLine("Not bound to anything.", unpack(TEXT[0]))
+                end
+
+                if self.source and self.source ~= "" then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("From " .. self.source, 0.42, 0.46, 0.52)
+                end
+                GameTooltip:Show()
+            end)
+            row:SetScript("OnLeave", function() GameTooltip:Hide() end)
             row:SetScript("OnClick", function(self)
                 if self.headerName then
                     browseOpen[self.headerName] = not browseOpen[self.headerName]
@@ -731,12 +873,18 @@ local function RefreshResults()
                 end
                 if not self.command then return end
 
+                -- Nothing waiting on the map means you are working the other
+                -- way round: this action, now press where you want it.
+                if not armed and not Selected() then
+                    ns.AwaitKeyFor(self.command, self.label)
+                    return
+                end
+
                 local key, layer
                 if armed then
                     key, layer = armed.key, armed.layer
                 else
                     key = Selected()
-                    if not key then Say("Pick a key on the map first."); return end
                     layer = (layerFilter ~= "all") and layerFilter or ""
                     local slots = ns.map[key] or {}
                     if slots[layer] then
@@ -771,6 +919,7 @@ local function RefreshResults()
             row.headerName, row.command, row.label = item.name, nil, nil
             row.bg:SetColorTexture(0.133, 0.153, 0.196, 1)
             row.tag:Hide()
+            row.clear:Hide()
             row.name:ClearAllPoints()
             row.name:SetPoint("LEFT", row, "LEFT", 8, 0)
             row.name:SetPoint("RIGHT", row.cat, "LEFT", -8, 0)
@@ -790,10 +939,14 @@ local function RefreshResults()
 
             -- The source is only worth saying when it is not the game's own.
             local fromAddon = ns.IsAddonCategory(entry.category)
-            row.cat:SetText(fromAddon and entry.category or "")
-            row.cat:SetTextColor(0.37, 0.41, 0.47)
+            row.source = fromAddon and entry.category or nil
+            row.cat:SetText("")
 
             local first, second = ns.KeysForCommand(entry.command)
+
+            row.clear:SetShown(first ~= nil)
+            row.clear.bg:SetColorTexture(0.26, 0.10, 0.10, 1)
+            row.clear.text:SetTextColor(0.80, 0.52, 0.52)
             local label = ns.PrettyBinding(first)
             if label and second then label = label .. "  +1" end
 
@@ -803,7 +956,7 @@ local function RefreshResults()
                 row.tag.bg:SetColorTexture(FILL[1][1], FILL[1][2], FILL[1][3], 1)
                 row.tag:SetWidth(row.tag.text:GetStringWidth() + 14)
                 row.tag:ClearAllPoints()
-                row.tag:SetPoint("RIGHT", row.cat, "LEFT", fromAddon and -10 or -2, 0)
+                row.tag:SetPoint("RIGHT", first and row.clear or row.cat, "LEFT", -8, 0)
                 row.tag:Show()
             else
                 row.tag:Hide()
@@ -812,11 +965,11 @@ local function RefreshResults()
             -- The name stops where the tag or the source starts, so a long
             -- action is cut short instead of running underneath them.
             row.name:ClearAllPoints()
-            row.name:SetPoint("LEFT", row, "LEFT", (searchText == "" and browseMode) and 22 or 8, 0)
+            row.name:SetPoint("LEFT", row, "LEFT", searchText == "" and 22 or 8, 0)
             if row.tag:IsShown() then
                 row.name:SetPoint("RIGHT", row.tag, "LEFT", -8, 0)
-            elseif fromAddon then
-                row.name:SetPoint("RIGHT", row.cat, "LEFT", -8, 0)
+            elseif row.clear:IsShown() then
+                row.name:SetPoint("RIGHT", row.clear, "LEFT", -8, 0)
             else
                 row.name:SetPoint("RIGHT", row, "RIGHT", -8, 0)
             end
@@ -901,6 +1054,7 @@ function ns.Refresh()
 
     local actionsBound, actionsTotal = ns.ActionTotals()
     panel.statActions:SetText(actionsBound .. " / " .. actionsTotal)
+    panel.statDoubles:SetText(ns.DoubleBoundCount())
 
     RefreshSlots()
     RefreshResults()
@@ -912,6 +1066,39 @@ end
 
 function ns.Restyle()
     if panel then ns.Refresh() end
+end
+
+----------------------------------------------------------------------
+-- Binding an action by pressing the key you want it on
+----------------------------------------------------------------------
+local awaiting
+
+function ns.AwaitKeyFor(command, name)
+    local ok, why = ns.CanEdit()
+    if not ok then Say(why); return end
+    if not panel then return end
+
+    awaiting = { command = command, name = name }
+    panel.await.title:SetText(name)
+
+    local a, b = ns.KeysForCommand(command)
+    local now = ns.PrettyBinding(a)
+    if now and b then now = now .. ", " .. (ns.PrettyBinding(b) or "") end
+    panel.await.now:SetText(now and ("Currently on " .. now) or "Not bound yet")
+    local tint = now and TEXT[1] or TEXT[0]
+    panel.await.now:SetTextColor(tint[1], tint[2], tint[3])
+
+    panel.await:Show()
+    panel.await:Raise()
+    panel.await:EnableKeyboard(true)
+    panel.await:SetPropagateKeyboardInput(false)
+end
+
+local function StopAwaiting()
+    awaiting = nil
+    if not panel then return end
+    panel.await:Hide()
+    panel.await:EnableKeyboard(false)
 end
 
 ----------------------------------------------------------------------
@@ -1115,6 +1302,56 @@ local function Build()
     searchCap:SetText("SEARCH FOR ACTIONS")
     searchCap:SetTextColor(0.42, 0.46, 0.52)
 
+    -- One button, not two: pressing it opens every heading and lights up,
+    -- pressing it again shuts them. The light is worked out from the list
+    -- itself on every refresh, so opening headings by hand keeps it honest.
+    local expandAll = API.Button(mapping, "Expand all", 20)
+    expandAll:SetWidth(84)
+    -- Beside the caption of the list it acts on, with room to breathe, so it
+    -- is nowhere near the search box or the filter below it.
+    expandAll:SetPoint("LEFT", searchCap, "RIGHT", 20, 0)
+    expandAll:SetAlpha(0.7)
+    expandAll:SetScript("OnClick", function()
+        if AllGroupsOpen() then
+            wipe(browseOpen)
+        else
+            for _, group in ipairs(ns.CommandGroups()) do browseOpen[group.name] = true end
+        end
+        resultOffset = 0
+        RefreshResults()
+    end)
+    expandAll:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine(AllGroupsOpen() and "Collapse all" or "Expand all", 1, 1, 1)
+        GameTooltip:AddLine(AllGroupsOpen()
+            and "Shut every heading in the list below."
+            or "Open every heading in the list below.", 0.6, 0.66, 0.75, true)
+        GameTooltip:Show()
+    end)
+    expandAll:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    panel.expandAll = expandAll
+
+
+    local hoverBind = API.Button(bar, "Bind on hover", 24)
+    hoverBind:SetWidth(118)
+    hoverBind:SetPoint("LEFT", free, "RIGHT", 8, 0)
+    hoverBind:SetAlpha(0.5)
+    hoverBind:SetScript("OnClick", function() ns.ToggleHoverBind() end)
+    hoverBind:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:AddLine("Bind on hover", 1, 1, 1)
+        GameTooltip:AddLine("Point at a button on one of Daylight UI's action bars and press the combo you want. It says what the key was doing before taking it. Escape to stop.", 0.6, 0.66, 0.75, true)
+        GameTooltip:Show()
+    end)
+    hoverBind:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    panel.hoverBind = hoverBind
+
+    -- the mode can be turned on from the slash command too, so it tells the
+    -- button rather than the button owning the state
+    function ns.SetHoverBindButton(on)
+        if panel and panel.hoverBind then panel.hoverBind:SetAlpha(on and 1 or 0.5) end
+    end
+
     local search = API.Input(mapping, {
         search = true,
         onChange = function(text)
@@ -1123,31 +1360,39 @@ local function Build()
             RefreshResults()
         end,
     })
-    search:SetSize(RESULT_W - 96, 26)
+    search:SetSize(RESULT_W - 128, 26)
     search:SetPoint("TOPLEFT", searchCap, "BOTTOMLEFT", 0, -8)
     panel.search = search
 
-    -- Browse everything by category without typing, the same headings the
-    -- keybindings window uses.
-    local seeAll = API.Button(mapping, "See all", 26)
-    seeAll:SetWidth(88)
-    seeAll:SetPoint("LEFT", search, "RIGHT", 8, 0)
-    seeAll:SetAlpha(0.5)
-    seeAll:SetScript("OnClick", function(self)
-        browseMode = not browseMode
+    -- One control for the list below: which actions it shows. There is no
+    -- off state, because a list you have to summon is a list nobody finds.
+    local filter = API.Button(mapping, FILTERS[1].label, 26)
+    filter:SetWidth(120)
+    filter:SetPoint("LEFT", search, "RIGHT", 8, 0)
+    filter:SetScript("OnClick", function(self)
+        filterIndex = (filterIndex % #FILTERS) + 1
+        SetButtonLabel(self, FILTERS[filterIndex].label)
+        self:SetAlpha(FilterKey() == "all" and 0.75 or 1)
         resultOffset = 0
-        if not browseMode then wipe(browseOpen) end
-        self:SetAlpha(browseMode and 1 or 0.5)
         RefreshResults()
+        if GameTooltip:IsOwned(self) then self:GetScript("OnEnter")(self) end
     end)
-    seeAll:HookScript("OnEnter", function(self)
+    filter:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:AddLine("See all", 1, 1, 1)
-        GameTooltip:AddLine("Every action under its own heading. Click a heading to open it, then an action to put it on the slot you picked.", 0.6, 0.66, 0.75, true)
+        GameTooltip:AddLine(FILTERS[filterIndex].label, 1, 1, 1)
+        GameTooltip:AddLine(FILTERS[filterIndex].tip, 0.6, 0.66, 0.75, true)
         GameTooltip:Show()
     end)
-    seeAll:HookScript("OnLeave", function() GameTooltip:Hide() end)
-    panel.seeAll = seeAll
+    filter:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    filter:SetAlpha(0.75)
+    panel.filter = filter
+
+    -- A control with three states has to say so without being hovered,
+    -- or the two states nobody found may as well not exist.
+    local filterHint = API.Text(mapping, "tiny")
+    filterHint:SetPoint("TOP", filter, "BOTTOM", 0, -3)
+    filterHint:SetText("Click to cycle")
+    filterHint:SetTextColor(0.42, 0.46, 0.52)
 
     panel.resultsHead = API.Text(mapping, "tiny", "LEFT")
     panel.resultsHead:SetPoint("TOPLEFT", mapping, "TOPLEFT", SLOT_W + 30, -90)
@@ -1159,7 +1404,10 @@ local function Build()
     -- has and scrolls inside it rather than stretching the panel.
     local HEADER_H = 16 + 10 + 46 + 18 + 16 + 10
     local SIDE_H   = 356
-    local band     = math.max(HEADER_H + #ns.Layers() * 31, SIDE_H)
+    -- The actions list is the only one now, so it gets room to be read in
+    -- rather than scrolled through eight lines at a time.
+    local LIST_MIN = HEADER_H + 11 * ROW_H
+    local band     = math.max(HEADER_H + #ns.Layers() * 31, SIDE_H, LIST_MIN)
     resultCount    = math.max(4, math.floor((band - HEADER_H) / ROW_H))
 
     panel.results = CreateFrame("Frame", nil, mapping)
@@ -1293,6 +1541,11 @@ local function Build()
     panel.statActions:SetTextColor(unpack(TEXT[4]))
     panel.statActions.hit:SetSize(140, 44)
 
+    panel.statDoubles = Stat(165, -226, "ON TWO KEYS",
+        "Actions reachable from two different keys. Two is WoW's limit, so this is every action with more than one. Use the filter by the search box to list them.")
+    panel.statDoubles:SetTextColor(unpack(TEXT[2]))
+    panel.statDoubles.hit:SetSize(120, 44)
+
     -- the free-keys tooltip names them, so the number is never a mystery
     panel.statKeys.hit.listing = function()
         local list = ns.FreeKeyList()
@@ -1314,7 +1567,7 @@ local function Build()
     local hint = API.Text(side, "tiny", "LEFT")
     hint:SetPoint("TOPLEFT", lh, "BOTTOMLEFT", 0, -280)
     hint:SetWidth(320)
-    hint:SetText("Click a slot, then pick an action from the list. The x clears a binding. You can also drag a button off a Daylight UI action bar onto a key.")
+    hint:SetText("Pick a key, then an action from the list. Or click an action on its own and press the combo you want. Bind on hover does it straight from the bars.")
     hint:SetTextColor(0.46, 0.50, 0.57)
 
     panel.combat = API.Text(side, "tiny", "LEFT")
@@ -1357,11 +1610,114 @@ local function Build()
     end)
     if API.MainButton then API.MainButton(panel.save, true) end
 
+    -- Taking bindings out and putting them back. An addon cannot write a
+    -- file, so both ends of that are a box of text.
+    panel.export = API.Button(panel, "Export", 26)
+    panel.export:SetWidth(92)
+    panel.export:SetPoint("BOTTOMLEFT", 20, 16)
+    panel.export:SetScript("OnClick", function() ns.ShowExport() end)
+    panel.export:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Export bindings", 1, 1, 1)
+        GameTooltip:AddLine("Copy every binding out as text you can keep in a file.",
+            0.6, 0.66, 0.75, true)
+        GameTooltip:Show()
+    end)
+    panel.export:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    panel.import = API.Button(panel, "Import", 26)
+    panel.import:SetWidth(92)
+    panel.import:SetPoint("BOTTOMLEFT", 118, 16)
+    panel.import:SetScript("OnClick", function() ns.ShowImport() end)
+    panel.import:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Import bindings", 1, 1, 1)
+        GameTooltip:AddLine("Paste an export back in. Discard changes undoes it.",
+            0.6, 0.66, 0.75, true)
+        GameTooltip:Show()
+    end)
+    panel.import:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
     panel.note = API.Text(panel, "tiny", "LEFT")
-    panel.note:SetPoint("BOTTOMLEFT", 20, 24)
+    panel.note:SetPoint("BOTTOMLEFT", 20, 50)
     panel.note:SetText("Saving to your "
         .. (ns.Get("scope") == "character" and "character" or "account") .. " bindings.")
     panel.note:SetTextColor(0.37, 0.41, 0.47)
+
+    -- waiting for a key, having picked the action first ----------------
+    local await = CreateFrame("Frame", nil, panel)
+    await:SetSize(380, 112)
+    await:SetPoint("CENTER", panel, "CENTER", 0, 0)
+    await:SetFrameStrata("FULLSCREEN_DIALOG")
+    await:EnableMouse(true)
+    await:EnableKeyboard(false)
+    await:EnableMouseWheel(true)
+    API.Skin(await, { window = true })
+    await:Hide()
+
+    await.title = API.Text(await, "head", "LEFT")
+    await.title:SetPoint("TOPLEFT", 16, -14)
+    await.title:SetWidth(348)
+    await.title:SetWordWrap(false)
+
+    await.now = API.Text(await, "small", "LEFT")
+    await.now:SetPoint("TOPLEFT", 16, -44)
+    await.now:SetWidth(348)
+
+    await.help = API.Text(await, "tiny", "LEFT")
+    await.help:SetPoint("TOPLEFT", 16, -72)
+    await.help:SetWidth(348)
+    await.help:SetText("Press the combo you want. Delete clears it, Escape cancels.")
+    await.help:SetTextColor(0.46, 0.50, 0.57)
+    panel.await = await
+
+    local AWAIT_IGNORED = {
+        LSHIFT = true, RSHIFT = true, LCTRL = true, RCTRL = true,
+        LALT = true, RALT = true, UNKNOWN = true,
+    }
+
+    local function TakeForAction(keyName)
+        if not awaiting then return end
+        if keyName == "ESCAPE" then StopAwaiting(); ns.Refresh(); return end
+        if AWAIT_IGNORED[keyName] then return end
+
+        local target = awaiting
+        StopAwaiting()
+
+        if keyName == "DELETE" then
+            local a, b = ns.KeysForCommand(target.command)
+            if a then ns.ClearBinding(a) end
+            if b then ns.ClearBinding(b) end
+            Say(target.name .. ": cleared.")
+            ns.Refresh()
+            return
+        end
+
+        local binding = ns.Compose(keyName, ns.CurrentLayer())
+        local held = GetBindingAction(binding)
+        if held ~= "" and held ~= target.command then
+            Say(ns.PrettyBinding(binding) .. " was on " .. ns.CommandName(held) .. ".")
+        end
+
+        local ok, displaced = ns.AssignBinding(binding, target.command)
+        if ok then
+            Say(ns.PrettyBinding(binding) .. " -> " .. target.name)
+        else
+            Say(tostring(displaced))
+        end
+        ns.Refresh()
+    end
+
+    await:SetScript("OnKeyDown", function(_, keyName) TakeForAction(keyName) end)
+    await:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" or button == "RightButton" then return end
+        local n = button:match("^Button(%d+)$")
+        if button == "MiddleButton" then n = 3 end
+        if n and tonumber(n) > 2 then TakeForAction("BUTTON" .. n) end
+    end)
+    await:SetScript("OnMouseWheel", function(_, delta)
+        TakeForAction(delta > 0 and "MOUSEWHEELUP" or "MOUSEWHEELDOWN")
+    end)
 
     -- key capture -----------------------------------------------------
     local capture = CreateFrame("Frame", nil, panel)
@@ -1465,6 +1821,7 @@ end
 function ns.HidePanel()
     if not panel then return end
     StopListening()
+    StopAwaiting()
     armed = nil
     if ns.IsDirty() then
         local ok, why = ns.Save()

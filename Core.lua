@@ -72,9 +72,9 @@ DaylightUI:RegisterModule(ns.NAME, {
                           desc = "The keyboard and mouse map. Also on /dui keymap.",
                           func = function() ns.ShowPanel() end },
 
-                        { type = "button", label = "Open the keybindings",
-                          desc = "Every bindable action under its own heading, with search. Also on /dui keybinds.",
-                          func = function() ns.ShowBindings() end },
+                        { type = "button", label = "Bind on hover",
+                          desc = "Point at a button on one of Daylight UI's action bars and press the combo you want. Also on /dui bindhover.",
+                          func = function() ns.ToggleHoverBind() end },
                     },
                 },
                 {
@@ -130,6 +130,12 @@ my.RegisterCommand("keymap", function()
 end, "Open the keymap")
 
 -- A way back if left or right click ever stops looking, moving or selecting.
+-- /dui keybinds used to open a second window. It opens the map instead,
+-- which carries the whole list now.
+my.RegisterCommand("keybinds", function()
+    ns.ShowPanel()
+end, "Open the keymap and its list of actions")
+
 my.RegisterCommand("keymapfix", function()
     local ok, result = ns.RestoreMouseDefaults()
     if not ok then
