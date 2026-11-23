@@ -51,7 +51,10 @@ function ns.ParseImport(text)
     for i = 2, #lines do
         local line = lines[i]:gsub("^%s+", ""):gsub("%s+$", "")
         if line ~= "" then
-            local binding, command = line:match("^(.-)=(.+)$")
+            -- Greedy on purpose: "=" is itself a key, so CTRL-==MASTERVOLUMEUP
+            -- has two of them and only the last one separates key from action.
+            -- No command contains "=", so the last one is always the right one.
+            local binding, command = line:match("^(.*)=(.+)$")
             if binding and command and binding ~= "" and command ~= "" then
                 pairsOut[#pairsOut + 1] = { binding = binding, command = command }
             end

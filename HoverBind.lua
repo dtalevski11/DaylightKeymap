@@ -17,6 +17,26 @@ local IGNORED = {
     LALT = true, RALT = true, UNKNOWN = true,
 }
 
+-- A keypress and the binding table do not always call a key the same thing.
+-- The punctuation keys are the ones that disagree: a press can arrive as a
+-- spelled-out name, or as the character the key makes with Shift held, while
+-- a binding is stored under the plain character. Binding the name the press
+-- gave would write to a key that does not exist: accepted, invisible on the
+-- map, and dead in game.
+local ALIAS = {
+    SEMICOLON = ";",   [":"] = ";",   OEM_1 = ";",
+    APOSTROPHE = "'",  QUOTE = "'",   ['"'] = "'",   OEM_7 = "'",
+    COMMA = ",",       ["<"] = ",",   OEM_COMMA = ",",
+    PERIOD = ".",      [">"] = ".",   OEM_PERIOD = ".",
+    SLASH = "/",       ["?"] = "/",   OEM_2 = "/",
+    BACKSLASH = "\\",  ["|"] = "\\",  OEM_5 = "\\",
+    LEFTBRACKET = "[", ["{"] = "[",   OEM_4 = "[",
+    RIGHTBRACKET = "]", ["}"] = "]",  OEM_6 = "]",
+    MINUS = "-",       ["_"] = "-",   OEM_MINUS = "-",
+    EQUALS = "=",      ["+"] = "=",   OEM_PLUS = "=",
+    GRAVE = "`",       TILDE = "`",   ["~"] = "`",   OEM_3 = "`",
+}
+
 ----------------------------------------------------------------------
 -- What the mouse is over
 ----------------------------------------------------------------------
@@ -55,9 +75,11 @@ end
 ----------------------------------------------------------------------
 -- Binding
 ----------------------------------------------------------------------
-local function Take(keyName)
-    if keyName == "ESCAPE" then ns.StopHoverBind(); return end
-    if IGNORED[keyName] then return end
+local function Take(rawKey)
+    if rawKey == "ESCAPE" then ns.StopHoverBind(); return end
+    if IGNORED[rawKey] then return end
+
+    local keyName = ALIAS[rawKey] or rawKey
 
     local button, command, name = HoveredButton()
     if not command then
@@ -78,6 +100,15 @@ local function Take(keyName)
     local ok, displaced = ns.AssignBinding(binding, command)
     if ok then
         Say(pretty .. " -> " .. name)
+
+        -- A binding the board cannot draw is the one failure that looks like
+        -- a success: chat says it worked, the map shows nothing. Say which
+        -- key it was, and what the keypress called it, so it can be fixed.
+        if ns.IsDrawnKey and not ns.IsDrawnKey(keyName) then
+            Say("Note: " .. keyName .. " is not drawn on your board"
+                .. (rawKey ~= keyName and (" (the keypress called it " .. rawKey .. ")") or "")
+                .. ", so it will not appear on the map. The binding itself is live.")
+        end
     else
         Say(tostring(displaced))
     end

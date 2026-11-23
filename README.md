@@ -25,6 +25,7 @@ WoW is the game of a thousand keybinds, and you usually find out a key is taken 
 - Click a slot, then click an action, to bind it
 - Right-click a slot to move its binding to another key; the **x** clears it
 - Search every bindable action, each one showing the key it is already on
+- Or search by key: `shift-f` shows what is on that combination, `shift` shows the whole layer
 - Drag a button off a Daylight UI action bar straight onto a key
 - Clear every binding at once with **Clear all**
 

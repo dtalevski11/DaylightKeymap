@@ -115,6 +115,89 @@ function ns.LayerLabel(layer)
     return table.concat(parts, "+")
 end
 
+----------------------------------------------------------------------
+-- Reading a key out of the search box
+--
+-- One field has to serve two questions: "where is Vanish" and "what is on
+-- Shift+F". Telling them apart is done on shape, not on a toggle the player
+-- has to remember. A bare letter stays a name search, because "f" is far
+-- more often the start of a word than a key someone is asking about.
+----------------------------------------------------------------------
+local QUERY_ALIAS = {
+    ESC = "ESCAPE", RETURN = "ENTER", BKSP = "BACKSPACE", BACK = "BACKSPACE",
+    SPACEBAR = "SPACE", CAPS = "CAPSLOCK", DEL = "DELETE", INS = "INSERT",
+    PGUP = "PAGEUP", PGDN = "PAGEDOWN", PGDOWN = "PAGEDOWN",
+    LMB = "BUTTON1", RMB = "BUTTON2", MMB = "BUTTON3",
+    WHEELUP = "MOUSEWHEELUP", WHEELDOWN = "MOUSEWHEELDOWN",
+    CONTROL = "CTRL",
+}
+
+-- Keys worth recognising on their own, with no modifier in front of them.
+local STANDALONE = {
+    SPACE = true, TAB = true, ENTER = true, ESCAPE = true, BACKSPACE = true,
+    CAPSLOCK = true, DELETE = true, INSERT = true, HOME = true, ["END"] = true,
+    PAGEUP = true, PAGEDOWN = true, PRINTSCREEN = true, SCROLLLOCK = true,
+    PAUSE = true, UP = true, DOWN = true, LEFT = true, RIGHT = true,
+    MOUSEWHEELUP = true, MOUSEWHEELDOWN = true,
+}
+
+local function Standalone(key)
+    if STANDALONE[key] then return true end
+    if key:match("^F%d+$") then return true end
+    if key:match("^BUTTON%d+$") then return true end
+    if key:match("^NUMPAD") then return true end
+    return false
+end
+
+-- Returns "binding", <binding string>  — a specific combination
+--         "layer",   <layer code>      — every binding on Shift, Ctrl, Alt
+--         nil                          — not a key query, search names
+function ns.QueryKey(text)
+    if not text or text == "" then return nil end
+
+    local tokens = {}
+    for word in text:upper():gmatch("[^%-%+%s]+") do tokens[#tokens + 1] = word end
+    if #tokens == 0 then return nil end
+
+    local shift, ctrl, alt, rest = false, false, false, {}
+    for _, token in ipairs(tokens) do
+        local word = QUERY_ALIAS[token] or token
+        if word == "SHIFT" then shift = true
+        elseif word == "CTRL" then ctrl = true
+        elseif word == "ALT" then alt = true
+        else rest[#rest + 1] = word end
+    end
+
+    local layer = (shift and "S" or "") .. (ctrl and "C" or "") .. (alt and "A" or "")
+
+    if #rest == 0 then
+        if layer == "" then return nil end
+        return "layer", layer
+    end
+    if #rest > 1 then return nil end
+
+    local key = QUERY_ALIAS[rest[1]] or rest[1]
+    if layer == "" and not Standalone(key) then return nil end
+
+    return "binding", ns.Compose(key, layer)
+end
+
+-- Is this command on the key, or the layer, that was asked for?
+function ns.CommandAnswersQuery(command, kind, value)
+    local first, second = ns.KeysForCommand(command)
+    for _, binding in ipairs({ first, second }) do
+        if binding then
+            if kind == "binding" then
+                if binding == value then return true end
+            else
+                local _, layer = ns.Split(binding)
+                if layer == value then return true end
+            end
+        end
+    end
+    return false
+end
+
 -- The layer the player is holding down right now.
 function ns.CurrentLayer()
     return (IsShiftKeyDown() and "S" or "")

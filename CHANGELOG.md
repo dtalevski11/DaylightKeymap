@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.1
+
+- Search the keymap by key as well as by name. Type `shift-f` for what is on
+  that combination, or `shift` on its own for everything on that layer. One
+  field, no mode to switch: which question you asked is read off the shape of
+  what you typed.
+- Bind on hover translates the name a keypress gives into the name the
+  binding table uses. Punctuation keys are the ones that disagree, which is
+  why a binding put on `;` or `'` this way never appeared on the map, and did
+  nothing in game either.
+- Bind on hover now says so when a binding lands on a key the board does not
+  draw, naming both the key and what the keypress called it. That failure
+  used to look exactly like a success.
+- Import split a line on the first `=` rather than the last, so a binding on
+  the `=` key (`CTRL-==MASTERVOLUMEUP`) came back pointing at a key that does
+  not exist. Export was never affected.
+- The tooltip that appeared over the title bar on the way to dragging the
+  window is gone.
+
 ## 1.1.0
 
 - The separate Keybindings window is gone. Everything it did now lives in the

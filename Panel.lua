@@ -218,8 +218,20 @@ local function OnKeyDrop(self)
     ns.Refresh()
 end
 
+-- Every key the board has drawn this session. A binding on a key that is
+-- not in here has nowhere to appear, which is worth saying out loud rather
+-- than leaving the player to wonder where their binding went.
+ns.drawn = ns.drawn or {}
+function ns.IsDrawnKey(key)
+    if not key then return false end
+    -- Board never built this session, so there is nothing to contradict.
+    if not next(ns.drawn) then return true end
+    return ns.drawn[key] == true
+end
+
 local function WireKey(tile, keyName)
     tile.keyName = keyName
+    ns.drawn[keyName] = true
     tile:SetScript("OnEnter", KeyTooltip)
     tile:SetScript("OnLeave", function() GameTooltip:Hide() end)
     tile:SetScript("OnClick", OnKeyClick)
@@ -375,6 +387,7 @@ local function LayoutMouse(host)
 
         hit.mouseLabel = entry.label
         hit.keyName = entry.key     -- so the repaint loop still reaches it
+        ns.drawn[entry.key] = true
 
         if entry.locked then
             -- Dead to the touch, like the modifier keys. Nothing can be put
@@ -685,6 +698,10 @@ local function PassesFilter(entry)
     return first == nil
 end
 local resultCount, resultTotal = 8, 0   -- rows that fit, matches found
+
+-- How many lines the list is currently showing. Used by /dui keymapraw and
+-- by the test harness, which drives the real search box and then asks.
+function ns.ResultCount() return resultTotal end
 local ROW_H = 28
 
 -- What the list below the search box is showing: matches while you type,
@@ -693,6 +710,20 @@ local function Matches()
     local out = {}
 
     if searchText ~= "" then
+        -- "shift-f" asks a different question from "vanish". Which one was
+        -- asked is read off the shape of the text, so there is no mode to
+        -- switch and nothing to remember.
+        local kind, value = ns.QueryKey(searchText)
+        if kind then
+            for _, entry in ipairs(ns.commands or {}) do
+                if PassesFilter(entry)
+                    and ns.CommandAnswersQuery(entry.command, kind, value) then
+                    out[#out + 1] = { kind = "action", entry = entry }
+                end
+            end
+            return out
+        end
+
         local needle = searchText:lower()
         for _, entry in ipairs(ns.commands or {}) do
             if (entry.name:lower():find(needle, 1, true)
@@ -759,7 +790,16 @@ local function RefreshResults()
     if panel.resultsHead then
         panel.resultsHead:SetShown(resultTotal > 0)
         if searchText ~= "" then
-            panel.resultsHead:SetText("MATCHING ACTIONS (" .. resultTotal .. ")")
+            local kind, value = ns.QueryKey(searchText)
+            if kind == "binding" then
+                panel.resultsHead:SetText("ON " .. ns.PrettyBinding(value):upper()
+                    .. " (" .. resultTotal .. ")")
+            elseif kind == "layer" then
+                panel.resultsHead:SetText("ON " .. ns.ModShort(value):upper()
+                    .. " (" .. resultTotal .. ")")
+            else
+                panel.resultsHead:SetText("MATCHING ACTIONS (" .. resultTotal .. ")")
+            end
         else
             panel.resultsHead:SetText(FILTERS[filterIndex].label:upper()
                 .. " (" .. resultTotal .. " lines)")
@@ -1147,13 +1187,6 @@ local function Build()
         ns.anchor:StopMovingOrSizing()
         if my.SuspendMover then my.SuspendMover("panel", true) end
     end)
-    handle:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(handle, "ANCHOR_BOTTOM")
-        GameTooltip:AddLine("Drag to move the keymap.", 0.6, 0.66, 0.75)
-        GameTooltip:Show()
-    end)
-    handle:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
     local title = API.Text(panel, "title", "LEFT")
     title:SetPoint("TOPLEFT", 20, -16)
     title:SetText("Keymap")
@@ -1299,7 +1332,7 @@ local function Build()
     -- box is right above the list it fills.
     local searchCap = API.Text(mapping, "tiny", "LEFT")
     searchCap:SetPoint("TOPLEFT", mapping, "TOPLEFT", SLOT_W + 30, 0)
-    searchCap:SetText("SEARCH FOR ACTIONS")
+    searchCap:SetText("SEARCH FOR ACTIONS OR KEYBINDINGS")
     searchCap:SetTextColor(0.42, 0.46, 0.52)
 
     -- One button, not two: pressing it opens every heading and lights up,
